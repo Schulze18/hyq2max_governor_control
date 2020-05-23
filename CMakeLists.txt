@@ -71,10 +71,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
+generate_messages(
+   DEPENDENCIES
 #   control_msgs#   nav_msgs#   std_msgs
-# )
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -207,3 +207,8 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+
+add_executable(hyq2max_governor_control_node src/hyq2max_governor_control_node.cpp)
+target_link_libraries(hyq2max_governor_control_node ${catkin_LIBRARIES})
+add_dependencies(hyq2max_governor_control_node hyq2max_governor_control_generate_messages_cpp)
