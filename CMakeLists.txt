@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   hyq2max_joints_position_controller
 )
+find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -211,5 +212,5 @@ include_directories(
 
 
 add_executable(hyq2max_governor_control_node src/hyq2max_governor_control_node.cpp)
-target_link_libraries(hyq2max_governor_control_node ${catkin_LIBRARIES})
+target_link_libraries(hyq2max_governor_control_node ${catkin_LIBRARIES} Eigen3::Eigen)
 add_dependencies(hyq2max_governor_control_node hyq2max_governor_control_generate_messages_cpp)
