@@ -8,7 +8,8 @@
 #include <hyq2max_joints_position_controller/HyQ2max_command.h>
 #include <Eigen/Dense>
 #include <tf/tf.h>
-
+#include <hyq2max_governor_control/hyq2max_governor_control.h>
+#include "hyq2max_governor_control/hyq2max_jacobian_functions.h"
 
 void groundTruthCallback(const nav_msgs::Odometry::ConstPtr& msg, Eigen::Matrix<double,6,1> *base_pos, Eigen::Matrix<double,6,1> *base_vel)
 {
@@ -69,7 +70,7 @@ void footBumperCallback(const gazebo_msgs::ContactsState::ConstPtr& msg, std::st
 
 void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,12,1> *qp, Eigen::Matrix<double,12,1> *q_torque, Eigen::Matrix<double,6,1> *Xw,Eigen::Matrix<double,6,1> *Xwp){//}, ros::Publisher cmd_publisher){
     //ROS_INFO("number of bumpers %d", )
-    ROS_INFO("I SAVED bumper string %s", (*name).c_str());
+   // ROS_INFO("I SAVED bumper string %s", (*name).c_str());
 /*
     std::string joint_topic_cmd_pub = "/hyq2max/HyQ2maxJointsPositionController/command";
     //ros::Publisher joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joint_topic_cmd_pub, 100);
@@ -78,13 +79,14 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
     msg_cmd.pos_command[2] = -1.5; msg_cmd.pos_command[5] = -1.5; msg_cmd.pos_command[8] = -1.5; msg_cmd.pos_command[11] = -1.5;
 
     cmd_publisher.publish(msg_cmd);*/
+    /*
     std::cout << "pos: " << (*q) << std::endl;
     std::cout << "vel: " << (*qp) << std::endl << std::endl;
     std::cout << "tranpose: " << (*q).transpose()*(*qp) << std::endl << std::endl;
     std::cout << "torque: " << (*q_torque) << std::endl;
     std::cout << "TRunk        ********  #############3" << std::endl;
     std::cout << "trunk pos: " << (*Xw) << std::endl;
-    std::cout << "trunk vel: " << (*Xwp) << std::endl << std::endl;
+    std::cout << "trunk vel: " << (*Xwp) << std::endl << std::endl;*/
 
 }
 
@@ -96,7 +98,14 @@ int main(int argc, char **argv)
     Eigen::Matrix<double,6,1> Xw, Xwp; // Base/Trunk position and velocity
     Eigen::Matrix<double,12,1> q, qp, q_torque; // Joint position and velocity
     Eigen::Matrix<double,12,4> contact_point, contact_force; // Joint position and velocity
-
+    // Jacobians referred to foot
+    Eigen::Matrix<double,3,3> J_foot_LF, J_foot_RF, J_foot_LH, J_foot_RH;
+    // Jacobians referred to CoM
+    Eigen::Matrix<double,3,3> J_CoM_HAA_LF, J_CoM_HFE_LF, J_CoM_KFE_LF;
+    Eigen::Matrix<double,3,3> J_CoM_HAA_RF, J_CoM_HFE_RF, J_CoM_KFE_RF;
+    Eigen::Matrix<double,3,3> J_CoM_HAA_LH, J_CoM_HFE_LH, J_CoM_KFE_LH;
+    Eigen::Matrix<double,3,3> J_CoM_HAA_RH, J_CoM_HFE_RH, J_CoM_KFE_RH;
+    Eigen::Matrix<double,3,3> J_CoM_LF, J_CoM_RF, J_CoM_LH, J_CoM_RH;
 
     ros::init(argc, argv, "hyq2max_governor_control_node");
 
@@ -136,9 +145,13 @@ int main(int argc, char **argv)
         sub_foot_bumper.push_back(single_sub_foot);
     }
 
+    updateCoMJacobian( &q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH);
+
+    updateJacobian( &q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH);
+
     ros::Publisher joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joints_cmd_topic_name, 100);
 
-    ros::Timer timer = node_handle.createTimer(ros::Duration(1), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp));
+    ros::Timer timer = node_handle.createTimer(ros::Duration(2), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp));
 
     ros::spin();
 
