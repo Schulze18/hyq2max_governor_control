@@ -110,7 +110,7 @@ add_dependencies(hyq2max_governor_control hyq2max_governor_control_generate_mess
 target_link_libraries(hyq2max_governor_control ${catkin_LIBRARIES})
 
 add_executable(hyq2max_governor_control_node src/hyq2max_governor_control_node.cpp)
-target_link_libraries(hyq2max_governor_control_node hyq2max_jacobian_functions ${catkin_LIBRARIES} Eigen3::Eigen)
+target_link_libraries(hyq2max_governor_control_node hyq2max_jacobian_functions hyq2max_governor_control ${catkin_LIBRARIES} Eigen3::Eigen)
 add_dependencies(hyq2max_governor_control_node hyq2max_governor_control_generate_messages_cpp ${PROJECT_NAME}_gencpp)
 
 

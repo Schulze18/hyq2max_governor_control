@@ -108,9 +108,9 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
     std::cout << "trunk vel: " << (*Xwp) << std::endl << std::endl;*/
 
     time_old = get_cpu_time();
-    updateCoMJacobian( q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH);
+    updateCoMJacobian( q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH, &J_CoM);
 
-    updateJacobian( q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH);
+    updateJacobian( q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH, &J_foot);
     
     J_CoM << J_CoM_LF, J_CoM_RF, J_CoM_LH, J_CoM_RH;
     J_foot << J_foot_LF, J_foot_RF, J_foot_LH, J_foot_RH;
@@ -118,10 +118,16 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
     
     //std::cout << CoM_vel << std::endl << std::endl;
     //Debug CoM position
-    CoM_position = CoM_position + 0.1*CoM_vel;
+    CoM_position = CoM_position + 0.1*CoM_vel;/*
     std::cout << "Position CoM: "<< std::endl << CoM_position << std::endl;
     time_now = get_cpu_time();
-    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;
+    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;*/
+
+    //Update State Space Matrices
+    //std::cout << J_foot << std::endl;
+    update_ss_matrices(&J_foot, &J_CoM);
+
+
 }
 
 
@@ -181,6 +187,7 @@ int main(int argc, char **argv)
         sub_foot_bumper.push_back(single_sub_foot);
     }
 
+    setup_values(300, 10, 80.51);
     //updateCoMJacobian( &q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH);
 
     //updateJacobian( &q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH);

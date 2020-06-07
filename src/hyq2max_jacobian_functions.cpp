@@ -3,7 +3,7 @@
 #include <iostream>
 
 
-void updateCoMJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_RF, Eigen::Matrix<double,3,3> *J_CoM_LH, Eigen::Matrix<double,3,3> *J_CoM_RH){
+void updateCoMJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_RF, Eigen::Matrix<double,3,3> *J_CoM_LH, Eigen::Matrix<double,3,3> *J_CoM_RH, Eigen::Matrix<double,3,12> *J_CoM){
     /*(*J_CoM_LF)(1,0) = (0.605e-3 * cos((*q)(1,0)) - 0.1346e-2 * sin((*q)(1,0)));
     (*J_CoM_LF)(1,1) = c1;
     J_CoM_HAA_LF(0,0) = 2340;
@@ -115,10 +115,12 @@ void updateCoMJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> 
     (*J_CoM_RH) = mi_1/mi_total*J_CoM_HAA_RH + mi_2/mi_total*J_CoM_HFE_RH + mi_3/mi_total*J_CoM_KFE_RH;
     //std::cout << (*J_CoM_RH) << std::endl << std::endl;
 
+    (*J_CoM) << (*J_CoM_LF), (*J_CoM_RF), (*J_CoM_LH), (*J_CoM_RH);
+
 }
 
 
-void updateJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH){
+void updateJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH, Eigen::Matrix<double,3,12> *J_foot){
     // Jacobian from Left Front Foot
     //(*J_foot_LF)(0,1) = -1;
     (*J_foot_LF)(0,0) = 0;
@@ -169,4 +171,5 @@ void updateJacobian(Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,3,3> *J_
     std::cout << (*J_foot_LH) << std::endl << std::endl;
     std::cout << (*J_foot_RH) << std::endl << std::endl;*/
 
+    (*J_foot) << (*J_foot_LF), (*J_foot_RF), (*J_foot_LH), (*J_foot_RH);
 }
