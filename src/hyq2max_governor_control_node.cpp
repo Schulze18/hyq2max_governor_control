@@ -21,6 +21,9 @@ Eigen::Matrix<double,3,3> J_CoM_LF, J_CoM_RF, J_CoM_LH, J_CoM_RH;
 Eigen::Matrix<double,3,12> J_CoM;
 //
 Eigen::Matrix<double,3,1> CoM_position, CoM_vel;
+Eigen::Matrix<double,16,16> Ad;
+Eigen::Matrix<double,16,12> Bd;
+Eigen::Matrix<double,12,16> Cd;
 double time_old, time_now;
 
 
@@ -125,7 +128,7 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
 
     //Update State Space Matrices
     //std::cout << J_foot << std::endl;
-    update_ss_matrices(&J_foot, &J_CoM);
+    update_ss_matrices(&Ad, &Bd, &J_foot, &J_CoM);
 
 
 }
@@ -187,7 +190,7 @@ int main(int argc, char **argv)
         sub_foot_bumper.push_back(single_sub_foot);
     }
 
-    setup_values(300, 10, 80.51);
+    setup_values(300, 10, 80.51, 9.81);
     //updateCoMJacobian( &q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH);
 
     //updateJacobian( &q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH);
