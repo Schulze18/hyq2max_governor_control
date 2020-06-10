@@ -49,4 +49,6 @@ void updateCoMJacobian(Eigen::Matrix<double,12,1> *, Eigen::Matrix<double,3,3> *
 
 void updateJacobian(Eigen::Matrix<double,12,1> *, Eigen::Matrix<double,3,3> *, Eigen::Matrix<double,3,3> *, Eigen::Matrix<double,3,3> *, Eigen::Matrix<double,3,3> *, Eigen::Matrix<double,3,12> *);
 
+void update_opt_matrices(Eigen::Matrix<double,28,28> *, Eigen::Matrix<double,28,12> *, Eigen::Matrix<double,12,28> *, Eigen::MatrixXd *, Eigen::MatrixXd *, double, double);
+
 #endif
