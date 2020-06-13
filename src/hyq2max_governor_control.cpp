@@ -14,6 +14,12 @@ void setup_values(double kp, double kd, double mass, double gravity, double disc
     gravity_vector(2,0) = 1;
 
     //std::cout << gravity_vector << std::endl;
+
+    /*Qe = qe*MatrixXd::Identity(12*Ny, 12*Ny);
+    Qw = qw*MatrixXd::Identity(12*Ny, 12*Ny);
+    Qq = qq*MatrixXd::Identity(12*Ny, 12*Ny);
+    Qdw = qdw*MatrixXd::Identity(12*Nu, 12*Nu);*/
+    
 }
 
 //update_ss_matrices(&Ac, &Bc, &Ad, &Bd, &Ae, &Be, &Ce, &J_foot, &J_CoM);
@@ -76,13 +82,35 @@ void update_ss_matrices(Eigen::Matrix<double,16,16> *Ac, Eigen::Matrix<double,16
 
 }
 
-void update_opt_matrices(Eigen::Matrix<double,28,28> *Ae, Eigen::Matrix<double,28,12> *Be, Eigen::Matrix<double,12,28> *Ce, Eigen::MatrixXd *PHI, Eigen::MatrixXd *Gbar, double Ny, double Nu){
 
-    for(int i = 0; i < Ny; i++){
-        (*PHI).block(0 + 28*i,0,12,28) = (*Ce)*((*Ae));//.pow(i+1));
+void update_opt_matrices(Eigen::Matrix<double,28,28> *Ae, Eigen::Matrix<double,28,12> *Be, Eigen::Matrix<double,12,28> *Ce, double Ny, double Nu, Eigen::MatrixXd *PHI, Eigen::MatrixXd *Gbar){
+
+    (*PHI).block(0,0,12,28) = (*Ce)*((*Ae));
+    for(int i = 1; i < Ny; i++){
+        //(*PHI).block(0 + 28*i,0,12,28) = (*Ce)*((*Ae));//.pow(i+1));
+        (*PHI).block(0 + 12*i,0,12,28) = (*PHI).block(0 + 12*(i-1),0,12,28)*(*Ae);
     }
 
-    std::cout << "Opt PHI " << std::endl;
-    std::cout << (*PHI) << std::endl << std::endl;
+    ////std::cout << "Opt PHI " << std::endl;
+    //std::cout << (*PHI) << std::endl << std::endl;
+    //std::cout << (*PHI).block(0,0,10,12) << std::endl << std::endl;
+    ////std::cout << (*PHI).block(5*12,0,10,28)*(*Be) << std::endl << std::endl;
+
+    for (int i = 0; i < Ny; i++){
+        for (int j = 0; j < Nu; j++){
+            if ( i>=j ){
+                //(*Gbar).block(12*i, 12*j, 12, 12) = (*PHI).block(12*i,0,12,28)*(*Be);
+                (*Gbar).block(12*i, 12*j, 12, 12) = (*PHI).block(12*(i-j),0,12,28)*(*Be);
+            }
+        }
+    }
+
+    ////std::cout << "Opt Gbar " << std::endl;
+    //std::cout << (*Gbar) << std::endl << std::endl;
+    ////std::cout << (*Gbar).block(168,0,10,12) << std::endl << "HUE" << std::endl << (*Gbar).block(168,108,10,12)  << std::endl << std::endl;
+
+    //std::cout << "Opt PHI " << std::endl;
+    //std::cout << (*PHI).rows() << "  " << (*PHI).cols() << std::endl << std::endl;
+    //(*Hqp) = ((*Gbar).transpose())*(Qy)*(*Gbar) + Qw;
 
 }

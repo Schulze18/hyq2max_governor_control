@@ -1,8 +1,13 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.1)
 project(hyq2max_governor_control)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
+#add_compile_options(-std=c++14)
+set(CMAKE_CXX_STANDARD 14) 
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+#set(CMAKE_CXX_STANDARD 11) 
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -18,6 +23,12 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 
+# Find OSQP library and headers
+find_package(osqp REQUIRED)
+
+# Add OsqpEigen
+find_package(OsqpEigen REQUIRED)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -26,6 +37,8 @@ generate_messages(
    DEPENDENCIES
 #   control_msgs#   nav_msgs#   std_msgs
 )
+
+
 
 
 ###################################
@@ -56,6 +69,7 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  SYSTEM
 )
 
 ## Declare a C++ library
@@ -110,9 +124,13 @@ add_dependencies(hyq2max_governor_control hyq2max_governor_control_generate_mess
 target_link_libraries(hyq2max_governor_control ${catkin_LIBRARIES})
 
 add_executable(hyq2max_governor_control_node src/hyq2max_governor_control_node.cpp)
-target_link_libraries(hyq2max_governor_control_node hyq2max_jacobian_functions hyq2max_governor_control ${catkin_LIBRARIES} Eigen3::Eigen)
+target_link_libraries(hyq2max_governor_control_node hyq2max_jacobian_functions hyq2max_governor_control ${catkin_LIBRARIES} Eigen3::Eigen osqp::osqp OsqpEigen::OsqpEigen)
 add_dependencies(hyq2max_governor_control_node hyq2max_governor_control_generate_messages_cpp ${PROJECT_NAME}_gencpp)
 
+#target_compile_features(hyq2max_governor_control_node PUBLIC cxx_std_14)
+
+# Link the OSQP shared library
+#target_link_libraries(yourTarget PRIVATE osqp::osqp)
 
 ## Mark executables and/or libraries for installation
 #install(TARGETS

@@ -11,6 +11,12 @@
 #include <hyq2max_governor_control/hyq2max_governor_control.h>
 #include "hyq2max_governor_control/hyq2max_jacobian_functions.h"
 #include <sys/time.h>
+#include "osqp.h"
+#include "OsqpEigen/OsqpEigen.h"
+#include "OsqpEigen/Solver.hpp"
+
+// instantiate the solver
+OsqpEigen::Solver solver;
 
 // Global Variables definition
 // Jacobians referred to foot
@@ -27,14 +33,32 @@ Eigen::Matrix<double,16,12> Bc, Bd;
 Eigen::Matrix<double,28,28> Ae;
 Eigen::Matrix<double,28,12> Be;
 Eigen::Matrix<double,12,28> Ce;
-Eigen::Matrix<double,112,28> PHI;
-Eigen::Matrix<double,12,28> Gbar;
-double time_old, time_now;
+Eigen::Matrix<double,28,1> Xe;
+Eigen::Matrix<double,12,1> W, DeltaW, Wold;
+//Eigen::Matrix<double,180,28> PHI;   // Allocated size for Ny = Nu = 20
+//Eigen::Matrix<double,180,120> Gbar; // Allocated size for Ny = Nu = 20
+Eigen::MatrixXd PHI(180,28);
+Eigen::MatrixXd Gbar(180,120);
+Eigen::MatrixXd Hqp(120,120);
+Eigen::VectorXd Fqp;
+Eigen::VectorXd QPSolution, ctrl;
 
+Eigen::MatrixXd ref_array(180,1);
+Eigen::SparseMatrix<double> hessian_sparse;
+//Eigen::Matrix<double,180,28> PHI;   // Allocated size for Ny = Nu = 20
+//Eigen::Matrix<double,180,120> Gbar; // Allocated size for Ny = Nu = 20
+Eigen::MatrixXd Qy, Qe, Qw, Qq, Qdw;
+double time_old, time_now;
+int Ny = 15, Nu = 10;
+double Kp = 300, Kd = 10;
+double total_mass = 80.51;
+double time_step = 0.01;
+
+hyq2max_joints_position_controller::HyQ2max_command msg_pos_cmd;
 
 double get_cpu_time(){
     		return (double)clock() / CLOCKS_PER_SEC;
-	}
+}
 
 
 void groundTruthCallback(const nav_msgs::Odometry::ConstPtr& msg, Eigen::Matrix<double,6,1> *base_pos, Eigen::Matrix<double,6,1> *base_vel)
@@ -94,7 +118,7 @@ void footBumperCallback(const gazebo_msgs::ContactsState::ConstPtr& msg, std::st
 }
 
 
-void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,12,1> *qp, Eigen::Matrix<double,12,1> *q_torque, Eigen::Matrix<double,6,1> *Xw, Eigen::Matrix<double,6,1> *Xwp)//, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_LH)//, Eigen::Matrix<double,3,3> *J_CoM_RH)//, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH)
+void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,12,1> *qp, Eigen::Matrix<double,12,1> *q_torque, Eigen::Matrix<double,6,1> *Xw, Eigen::Matrix<double,6,1> *Xwp, Eigen::Matrix<double,12,1> *qref, ros::Publisher *joint_w_pub)//, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_LH)//, Eigen::Matrix<double,3,3> *J_CoM_RH)//, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH)
 {
     //ROS_INFO("number of bumpers %d", )
    // ROS_INFO("I SAVED bumper string %s", (*name).c_str());
@@ -126,16 +150,54 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
     
     //std::cout << CoM_vel << std::endl << std::endl;
     //Debug CoM position
-    CoM_position = CoM_position + 0.1*CoM_vel;/*
-    std::cout << "Position CoM: "<< std::endl << CoM_position << std::endl;
+    //CoM_position = CoM_position + 0.1*CoM_vel;
+    //std::cout << "Position CoM: "<< std::endl << CoM_position << std::endl;
     time_now = get_cpu_time();
-    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;*/
+    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;
 
     //Update State Space Matrices
     //std::cout << J_foot << std::endl;
     update_ss_matrices(&Ac, &Bc, &Ad, &Bd, &Ae, &Be, &Ce, &J_foot, &J_CoM);
 
-    //update_opt_matrices(&Ae, &Be, &Ce, &PHI, &Gbar, 4, 2);
+    update_opt_matrices(&Ae, &Be, &Ce, Ny, Nu, &PHI, &Gbar);
+
+    //Hqp = (Gbar.transpose())*Qy*Gbar + Qw;
+    Hqp = (Gbar.transpose())*Qy*Gbar + Qw;
+    //std::cout << "Size: " << Hqp.size()  << std::endl;
+    //std::cout << "Size: " << Qw.size()  << std::endl << std::endl;
+
+    //Eigen::MatrixXd st(28,1);
+    Xe.block(0, 0, 3, 1) = CoM_vel;
+    //Xe.block(3, 0, 1, 1) = -9.81;
+    Xe(3, 0) = 9.81;
+    Xe.block(4, 0, 12, 1) = (*q);
+    Xe.block(16, 0, 12, 1) = Wold;
+
+    Fqp = 2*((PHI*Xe-ref_array).transpose())*Qy*Gbar;
+
+    //Update Solver Data
+    hessian_sparse = Hqp.sparseView();
+    solver.updateHessianMatrix(hessian_sparse);
+    solver.updateGradient(Fqp.transpose());
+
+    //Solve the QP problem
+    if(!solver.solve()){
+         std::cout << "ERROs" << std::endl;
+    }
+    // get the controller input
+    QPSolution = solver.getSolution();
+    DeltaW = QPSolution.block(0, 0, 12, 1);
+
+    W = Wold + DeltaW;
+    Wold = W;
+    //std::cout << "W:" << W << std::endl << std::endl;
+
+    //Pub Joint Command
+    for(int i = 0; i < 12; i++){
+        //msg_pos_cmd.pos_command[i] = ref_array(i,0);
+        msg_pos_cmd.pos_command[i] = W(i,0);
+    }
+    (*joint_w_pub).publish(msg_pos_cmd);
 
 }
 
@@ -148,6 +210,7 @@ int main(int argc, char **argv)
     Eigen::Matrix<double,6,1> Xw, Xwp; // Base/Trunk position and velocity
     Eigen::Matrix<double,12,1> q, qp, q_torque; // Joint position and velocity
     Eigen::Matrix<double,12,4> contact_point, contact_force; // Joint position and velocity
+    Eigen::Matrix<double,12,1> qref;
     // Jacobians referred to foot
     //Eigen::Matrix<double,3,3> J_foot_LF, J_foot_RF, J_foot_LH, J_foot_RH;
     // Jacobians referred to CoM
@@ -196,14 +259,82 @@ int main(int argc, char **argv)
         sub_foot_bumper.push_back(single_sub_foot);
     }
 
-    setup_values(300, 10, 80.51, 9.81, 0.1);
+    setup_values(Kp, Kd, total_mass, 9.81, time_step);
+
+    //Set Weight Matrices
+    /*Qy.resize(12*Ny, 12*Ny);
+    Qe.resize(12*Ny, 12*Ny);
+    Qw.resize(12*Nu, 12*Nu);
+    Qq.resize(12*Ny, 12*Ny);
+    Qdw.resize(12*Nu, 12*Nu);*/
+    Qe = 0.9 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    Qy = 0.9 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    Qq = 1.4 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    Qw = 1.4 * Eigen::MatrixXd::Identity(12*Nu, 12*Nu);
+    Qdw = 100 * Eigen::MatrixXd::Identity(12*Nu, 12*Nu);
+
+    //Set Reference for Joints
+    Eigen::MatrixXd ref_joint(12,1);
+    ref_joint << -0.05, 0.65, -1.18, -0.05, 0.65, -1.18, -0.05, -0.65, 1.18, -0.05, -0.65, 1.18;
+    Wold << 0.0005677374429069459, 0.3055045008659363, -0.9169064164161682, -0.00456430297344923, 0.30609703063964844, -0.9157984256744385, 0.015615483745932579, -0.2985933721065521, 0.8632257580757141, 0.0168602354824543, -0.2996049225330353, 0.8676934838294983;
+    for(int i = 0; i < Ny; i++){
+        ref_array.block(i*12,0,12,1) = ref_joint; 
+    }
+
+    //Set dumb Constrait Matrices
+    Eigen::SparseMatrix<double> linearMatrix(1,12*Nu);
+    Eigen::VectorXd lowerBound(1);
+    Eigen::VectorXd upperBound(1);
+
+    //linearMatrix.resize(1,1);
+    //upperBound.resize(1,1);
+    //lowerBound.resize(1,1);
+    //linearMatrix(0,0) = 1;
+    linearMatrix.insert(0,0) = 1;
+    upperBound(0) = 100;
+    lowerBound(0) = -100;
+
+
+    // Initial Matrices Data
+    Hqp = Eigen::MatrixXd::Identity(12*Nu, 12*Nu);
+    Fqp = Eigen::MatrixXd::Constant(12*Nu, 1, 1);
+
+    //Solver Parameters
+   // solver.settings()->setVerbosity(false);
+
+    //Init Data do Solver
+    solver.data()->setNumberOfVariables(12 * Nu);
+    solver.data()->setNumberOfConstraints(1);
+    hessian_sparse = Hqp.sparseView();
+    solver.data()->setHessianMatrix(hessian_sparse);
+    //Fqp = Eigen::MatrixXd::Zero(120, 1);
+    solver.data()->setGradient(Fqp.transpose());
+    solver.data()->setLinearConstraintsMatrix(linearMatrix);
+    solver.data()->setLowerBound(lowerBound);
+    solver.data()->setUpperBound(upperBound);
+
+    // instantiate the solver
+    if(!solver.initSolver()){
+        std::cout << "Problem " << std::endl;
+    }
+    else{
+         std::cout << "OK " << std::endl;
+    }
+
     //updateCoMJacobian( &q, &J_CoM_LF, &J_CoM_RF, &J_CoM_LH, &J_CoM_RH);
 
     //updateJacobian( &q, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH);
 
+    //Eigen::Matrix<double,28,28> Ae;
+    //Eigen::MatrixPower<Matrix> Apow(Ae);
+   // std::cout << Apow(4) << std::endl << std::endl;
+
+    
+
+
     ros::Publisher joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joints_cmd_topic_name, 100);
 
-    ros::Timer timer = node_handle.createTimer(ros::Duration(0.1), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp));//, &J_CoM_LF, &J_CoM_LH));//, &J_CoM_RH));//, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH));
+    ros::Timer timer = node_handle.createTimer(ros::Duration(time_step), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp, &qref, &joint_cmd_pub));//, &J_CoM_LF, &J_CoM_LH));//, &J_CoM_RH));//, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH));
 
     ros::spin();
 
