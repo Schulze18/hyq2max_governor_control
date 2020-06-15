@@ -39,7 +39,9 @@ Eigen::Matrix<double,12,1> W, DeltaW, Wold;
 //Eigen::Matrix<double,180,120> Gbar; // Allocated size for Ny = Nu = 20
 Eigen::MatrixXd PHI(180,28);
 Eigen::MatrixXd Gbar(180,120);
+Eigen::MatrixXd Gbar_transpose(120,180);
 Eigen::MatrixXd Hqp(120,120);
+//Eigen::Matrix<double,120,120> Hqp;
 Eigen::VectorXd Fqp;
 Eigen::VectorXd QPSolution, ctrl;
 
@@ -48,18 +50,21 @@ Eigen::SparseMatrix<double> hessian_sparse;
 //Eigen::Matrix<double,180,28> PHI;   // Allocated size for Ny = Nu = 20
 //Eigen::Matrix<double,180,120> Gbar; // Allocated size for Ny = Nu = 20
 Eigen::MatrixXd Qy, Qe, Qw, Qq, Qdw;
+//Eigen::SparseMatrix<double> Qy, Qe, Qw, Qq, Qdw;
 double time_old, time_now;
 int Ny = 15, Nu = 10;
 double Kp = 300, Kd = 10;
 double total_mass = 80.51;
 double time_step = 0.01;
+double timer_period = 0;
 
 hyq2max_joints_position_controller::HyQ2max_command msg_pos_cmd;
+ros::Publisher joint_cmd_pub;
+
 
 double get_cpu_time(){
     		return (double)clock() / CLOCKS_PER_SEC;
 }
-
 
 void groundTruthCallback(const nav_msgs::Odometry::ConstPtr& msg, Eigen::Matrix<double,6,1> *base_pos, Eigen::Matrix<double,6,1> *base_vel)
 {
@@ -118,7 +123,7 @@ void footBumperCallback(const gazebo_msgs::ContactsState::ConstPtr& msg, std::st
 }
 
 
-void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,12,1> *qp, Eigen::Matrix<double,12,1> *q_torque, Eigen::Matrix<double,6,1> *Xw, Eigen::Matrix<double,6,1> *Xwp, Eigen::Matrix<double,12,1> *qref, ros::Publisher *joint_w_pub)//, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_LH)//, Eigen::Matrix<double,3,3> *J_CoM_RH)//, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH)
+void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matrix<double,12,1> *q, Eigen::Matrix<double,12,1> *qp, Eigen::Matrix<double,12,1> *q_torque, Eigen::Matrix<double,6,1> *Xw, Eigen::Matrix<double,6,1> *Xwp, Eigen::Matrix<double,12,1> *qref)//, ros::Publisher *joint_w_pub)//, Eigen::Matrix<double,3,3> *J_CoM_LF, Eigen::Matrix<double,3,3> *J_CoM_LH)//, Eigen::Matrix<double,3,3> *J_CoM_RH)//, Eigen::Matrix<double,3,3> *J_foot_LF, Eigen::Matrix<double,3,3> *J_foot_RF, Eigen::Matrix<double,3,3> *J_foot_LH, Eigen::Matrix<double,3,3> *J_foot_RH)
 {
     //ROS_INFO("number of bumpers %d", )
    // ROS_INFO("I SAVED bumper string %s", (*name).c_str());
@@ -152,8 +157,8 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
     //Debug CoM position
     //CoM_position = CoM_position + 0.1*CoM_vel;
     //std::cout << "Position CoM: "<< std::endl << CoM_position << std::endl;
-    time_now = get_cpu_time();
-    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;
+    //time_now = get_cpu_time();
+    //std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;
 
     //Update State Space Matrices
     //std::cout << J_foot << std::endl;
@@ -161,10 +166,21 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
 
     update_opt_matrices(&Ae, &Be, &Ce, Ny, Nu, &PHI, &Gbar);
 
+    time_now = get_cpu_time();
+    //std::cout << "Compute time opt: " << get_cpu_time() - time_old  << std::endl;
+
+   // Gbar_transpose = Gbar.transpose()*Qy;
+    //std::cout << "Compute time transp Gbar: " << get_cpu_time() - time_old  << std::endl;
+
+    Hqp = (Gbar.transpose())*Qy*Gbar + Qdw;
     //Hqp = (Gbar.transpose())*Qy*Gbar + Qw;
-    Hqp = (Gbar.transpose())*Qy*Gbar + Qw;
+    //Hqp = (Gbar.transpose())*Qy*Gbar;
+   // Hqp = Gbar_transpose*Gbar; 
+    //hessian_sparse = Gbar_transpose*Gbar; 
     //std::cout << "Size: " << Hqp.size()  << std::endl;
     //std::cout << "Size: " << Qw.size()  << std::endl << std::endl;
+
+    //std::cout << "Compute time Hqp: " << get_cpu_time() - time_old  << std::endl;
 
     //Eigen::MatrixXd st(28,1);
     Xe.block(0, 0, 3, 1) = CoM_vel;
@@ -175,15 +191,25 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
 
     Fqp = 2*((PHI*Xe-ref_array).transpose())*Qy*Gbar;
 
+    //std::cout << "Compute time Fqp: " << get_cpu_time() - time_old  << std::endl << std::endl << std::endl;
+
+    /*time_now = get_cpu_time();
+    std::cout << "Compute time: " << time_now - time_old  << std::endl << std::endl;*/
+
+
     //Update Solver Data
     hessian_sparse = Hqp.sparseView();
+    //std::cout << "Compute time sparse hqp: " << get_cpu_time() - time_old  << std::endl;
     solver.updateHessianMatrix(hessian_sparse);
     solver.updateGradient(Fqp.transpose());
 
+    //std::cout << "Compute time solver matrix: " << get_cpu_time() - time_old  << std::endl;
     //Solve the QP problem
     if(!solver.solve()){
          std::cout << "ERROs" << std::endl;
     }
+    // std::cout << "Compute time solver compute: " << get_cpu_time() - time_old  << std::endl;
+
     // get the controller input
     QPSolution = solver.getSolution();
     DeltaW = QPSolution.block(0, 0, 12, 1);
@@ -197,8 +223,12 @@ void timerCallback(const ros::TimerEvent& event, std::string *name, Eigen::Matri
         //msg_pos_cmd.pos_command[i] = ref_array(i,0);
         msg_pos_cmd.pos_command[i] = W(i,0);
     }
-    (*joint_w_pub).publish(msg_pos_cmd);
+    //(*joint_w_pub).publish(msg_pos_cmd);
+    joint_cmd_pub.publish(msg_pos_cmd);
 
+    //Teste time from timer
+    //std::cout << "timer period: " << timer_period - get_cpu_time()  << std::endl;
+    //timer_period = get_cpu_time();
 }
 
 
@@ -254,10 +284,11 @@ int main(int argc, char **argv)
     //ros::Subscriber sub_foot_bumper = node_handle.subscribe("/lf_foot_bumper", 100, footBumperCallback);
     //ros::Subscriber sub_foot_bumper = node_handle.subscribe<gazebo_msgs::ContactsState> ("/lf_foot_bumper", 100, boost::bind(footBumperCallback, _1, &colission_names[0]));
 
+/*
     for(int i = 0; i < bumper_topic_names.size() ; i++){
         ros::Subscriber single_sub_foot = node_handle.subscribe<gazebo_msgs::ContactsState> (bumper_topic_names[i], 100, boost::bind(footBumperCallback, _1, &colission_names[i]));
         sub_foot_bumper.push_back(single_sub_foot);
-    }
+    }*/
 
     setup_values(Kp, Kd, total_mass, 9.81, time_step);
 
@@ -268,7 +299,9 @@ int main(int argc, char **argv)
     Qq.resize(12*Ny, 12*Ny);
     Qdw.resize(12*Nu, 12*Nu);*/
     Qe = 0.9 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
-    Qy = 0.9 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    //Qy = 0.9 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    //Qy = 0.3 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
+    Qy = 0.1 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
     Qq = 1.4 * Eigen::MatrixXd::Identity(12*Ny, 12*Ny);
     Qw = 1.4 * Eigen::MatrixXd::Identity(12*Nu, 12*Nu);
     Qdw = 100 * Eigen::MatrixXd::Identity(12*Nu, 12*Nu);
@@ -276,7 +309,9 @@ int main(int argc, char **argv)
     //Set Reference for Joints
     Eigen::MatrixXd ref_joint(12,1);
     ref_joint << -0.05, 0.65, -1.18, -0.05, 0.65, -1.18, -0.05, -0.65, 1.18, -0.05, -0.65, 1.18;
-    Wold << 0.0005677374429069459, 0.3055045008659363, -0.9169064164161682, -0.00456430297344923, 0.30609703063964844, -0.9157984256744385, 0.015615483745932579, -0.2985933721065521, 0.8632257580757141, 0.0168602354824543, -0.2996049225330353, 0.8676934838294983;
+    //Wold << 0.0005677374429069459, 0.3055045008659363, -0.9169064164161682, -0.00456430297344923, 0.30609703063964844, -0.9157984256744385, 0.015615483745932579, -0.2985933721065521, 0.8632257580757141, 0.0168602354824543, -0.2996049225330353, 0.8676934838294983;
+    Wold << -0.05, 1.3, -2.65,-0.05, 1.3, -2.65, -0.05, -1.3, 2.65, -0.05, -1.3, 2.65;
+    
     for(int i = 0; i < Ny; i++){
         ref_array.block(i*12,0,12,1) = ref_joint; 
     }
@@ -300,7 +335,7 @@ int main(int argc, char **argv)
     Fqp = Eigen::MatrixXd::Constant(12*Nu, 1, 1);
 
     //Solver Parameters
-   // solver.settings()->setVerbosity(false);
+    solver.settings()->setVerbosity(false);
 
     //Init Data do Solver
     solver.data()->setNumberOfVariables(12 * Nu);
@@ -332,22 +367,29 @@ int main(int argc, char **argv)
     
 
 
-    ros::Publisher joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joints_cmd_topic_name, 100);
+    //ros::Publisher joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joints_cmd_topic_name, 100);
+    joint_cmd_pub = node_handle.advertise<hyq2max_joints_position_controller::HyQ2max_command>(joints_cmd_topic_name, 100);
 
-    ros::Timer timer = node_handle.createTimer(ros::Duration(time_step), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp, &qref, &joint_cmd_pub));//, &J_CoM_LF, &J_CoM_LH));//, &J_CoM_RH));//, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH));
+    ros::Timer timer = node_handle.createTimer(ros::Duration(time_step), boost::bind(timerCallback, _1, &colission_names[3], &q, &qp, &q_torque, &Xw, &Xwp, &qref));//, &joint_cmd_pub));//, &J_CoM_LF, &J_CoM_LH));//, &J_CoM_RH));//, &J_foot_LF, &J_foot_RF, &J_foot_LH, &J_foot_RH));
 
     ros::spin();
 
 /*
-    ros::Rate loop_rate(10);
+    ros::Rate loop_rate(100);
     while (ros::ok()){
 
-        hyq2max_joints_position_controller::HyQ2max_command msg_cmd;
+        //hyq2max_joints_position_controller::HyQ2max_command msg_cmd;
         //msg_cmd.pos_comamnd = [-0.1,0.75, -1.5, -0.1,-0.75,1.5,-0.1,-0.75,1.5,-0.1,0.75,-1.5]
-        msg_cmd.pos_command[2] = -1.5; msg_cmd.pos_command[5] = -1.5; msg_cmd.pos_command[8] = -1.5; msg_cmd.pos_command[11] = -1.5;
+       // msg_cmd.pos_command[2] = -1.5; msg_cmd.pos_command[5] = -1.5; msg_cmd.pos_command[8] = -1.5; msg_cmd.pos_command[11] = -1.5;
 
-        joint_cmd_pub.publish(msg_cmd);
+        // std::cout << "teste pub" << std::endl << std::endl;
+        for(int i = 0; i < 12; i++){
+            //msg_pos_cmd.pos_command[i] = ref_array(i,0);
+            msg_pos_cmd.pos_command[i] = W(i,0);
+        }
+        Wold = W;
 
+        joint_cmd_pub.publish(msg_pos_cmd);
 
         ros::spinOnce();
         loop_rate.sleep();
